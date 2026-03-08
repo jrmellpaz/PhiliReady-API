@@ -207,6 +207,10 @@ Authorization: Bearer <access_token>
 | `region` | `string` | Region |
 | `population` | `integer` | Total population (2024 Census) |
 | `households` | `integer` | Number of households |
+| `povertyPct` | `float` | Poverty incidence (0.0-1.0) |
+| `isCoastal` | `integer` | `0` = inland, `1` = coastal |
+| `floodZone` | `string` | `"low"`, `"medium"`, or `"high"` |
+| `eqZone` | `string` | `"low"`, `"medium"`, or `"high"` |
 | `riskScore` | `float` | Composite risk score (0.0-1.0) |
 | `zoneType` | `string` | `"coastal"` or `"inland"` |
 | `demand` | `object` | Peak single-day demand (see below) |
@@ -231,6 +235,10 @@ Authorization: Bearer <access_token>
   "region": "NCR",
   "population": 1750000,
   "households": 417791,
+  "povertyPct": 0.20,
+  "isCoastal": 0,
+  "floodZone": "medium",
+  "eqZone": "medium",
   "riskScore": 0.4223,
   "zoneType": "inland",
   "demand": {
@@ -288,8 +296,18 @@ Authorization: Bearer <access_token>
 | Field | Type | Description |
 |-------|------|-------------|
 | `message` | `string` | Success message |
-| `changes` | `object` | Fields that were changed with new values (camelCase keys) |
-| `newRiskScore` | `float` | Recomputed risk score |
+| `pcode` | `string` | PSGC code |
+| `name` | `string` | City/municipality name |
+| `province` | `string` | Province |
+| `region` | `string` | Region |
+| `population` | `integer` | Total population |
+| `households` | `integer` | Number of households |
+| `povertyPct` | `float` | Poverty incidence (0.0-1.0) |
+| `isCoastal` | `integer` | `0` = inland, `1` = coastal |
+| `floodZone` | `string` | `"low"`, `"medium"`, or `"high"` |
+| `eqZone` | `string` | `"low"`, `"medium"`, or `"high"` |
+| `riskScore` | `float` | Recomputed risk score (0.0-1.0) |
+| `zoneType` | `string` | `"coastal"` or `"inland"` |
 | `updatedBy` | `string` | Email of the editor |
 | `updatedAt` | `string` | ISO timestamp |
 
@@ -297,11 +315,18 @@ Authorization: Bearer <access_token>
 ```json
 {
   "message": "Updated city 'Caloocan City' (1380600000)",
-  "changes": {
-    "population": 1750000,
-    "floodZone": "high"
-  },
-  "newRiskScore": 0.5223,
+  "pcode": "1380600000",
+  "name": "Caloocan City",
+  "province": "Metro Manila",
+  "region": "NCR",
+  "population": 1750000,
+  "households": 417791,
+  "povertyPct": 0.20,
+  "isCoastal": 0,
+  "floodZone": "high",
+  "eqZone": "medium",
+  "riskScore": 0.5223,
+  "zoneType": "inland",
   "updatedBy": "admin@philiready.ph",
   "updatedAt": "2026-03-07T05:00:00.000000"
 }

@@ -84,6 +84,10 @@ def get_city_detail(
         region=city.region,
         population=city.population,
         households=city.households,
+        poverty_pct=city.poverty_pct,
+        is_coastal=city.is_coastal,
+        flood_zone=city.flood_zone,
+        eq_zone=city.eq_zone,
         risk_score=city.risk_score,
         zone_type="coastal" if city.is_coastal else "inland",
         demand=peak,
@@ -115,47 +119,47 @@ def update_city(
     if not city:
         raise HTTPException(status_code=404, detail=f"City '{pcode}' not found")
 
-    # Track what was changed
-    changes = {}
+    # Track whether any field was actually provided
+    has_changes = False
 
     # Apply provided fields
     if body.population is not None:
         if body.population < 1:
             raise HTTPException(status_code=400, detail="Population must be positive")
-        changes["population"] = body.population
         city.population = body.population
+        has_changes = True
 
     if body.households is not None:
         if body.households < 1:
             raise HTTPException(status_code=400, detail="Households must be positive")
-        changes["households"] = body.households
         city.households = body.households
+        has_changes = True
 
     if body.poverty_pct is not None:
         if not 0.0 <= body.poverty_pct <= 1.0:
             raise HTTPException(status_code=400, detail="Poverty percentage must be 0.0-1.0")
-        changes["povertyPct"] = body.poverty_pct
         city.poverty_pct = body.poverty_pct
+        has_changes = True
 
     if body.is_coastal is not None:
         if body.is_coastal not in (0, 1):
             raise HTTPException(status_code=400, detail="is_coastal must be 0 or 1")
-        changes["isCoastal"] = body.is_coastal
         city.is_coastal = body.is_coastal
+        has_changes = True
 
     if body.flood_zone is not None:
         if body.flood_zone not in ("low", "medium", "high"):
             raise HTTPException(status_code=400, detail="flood_zone must be low, medium, or high")
-        changes["floodZone"] = body.flood_zone
         city.flood_zone = body.flood_zone
+        has_changes = True
 
     if body.eq_zone is not None:
         if body.eq_zone not in ("low", "medium", "high"):
             raise HTTPException(status_code=400, detail="eq_zone must be low, medium, or high")
-        changes["eqZone"] = body.eq_zone
         city.eq_zone = body.eq_zone
+        has_changes = True
 
-    if not changes:
+    if not has_changes:
         raise HTTPException(status_code=400, detail="No fields to update")
 
     # Auto-recompute risk score from updated parameters
@@ -170,8 +174,18 @@ def update_city(
 
     return CityUpdateResponse(
         message=f"Updated city '{city.name}' ({pcode})",
-        changes=changes,
-        new_risk_score=city.risk_score,
+        pcode=city.pcode,
+        name=city.name,
+        province=city.province,
+        region=city.region,
+        population=city.population,
+        households=city.households,
+        poverty_pct=city.poverty_pct,
+        is_coastal=city.is_coastal,
+        flood_zone=city.flood_zone,
+        eq_zone=city.eq_zone,
+        risk_score=city.risk_score,
+        zone_type="coastal" if city.is_coastal else "inland",
         updated_by=city.updated_by,
         updated_at=city.updated_at.isoformat(),
     )

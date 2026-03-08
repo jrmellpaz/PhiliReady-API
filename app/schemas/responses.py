@@ -90,27 +90,45 @@ class CityDetailResponse(CamelModel):
     """
     Full city detail including demographics, risk assessment, and peak demand.
     Returned by GET /api/v1/cities/{pcode}.
+    Includes all editable parameters so the frontend can display them in forms.
     """
-    pcode:      str                   # PSGC code, e.g. "PH072217000"
-    name:       str                   # City/municipality name
-    province:   str                   # Province name
-    region:     str                   # Region name
-    population: int                   # Total population (2024 Census)
-    households: int                   # Number of households
-    risk_score: float                 # Composite risk score 0.0-1.0
-    zone_type:  str                   # "coastal" or "inland"
-    demand:     CityDemand            # Peak single-day demand estimates
-    updated_by: Optional[str] = None  # Email of last editor
-    updated_at: Optional[str] = None  # ISO timestamp of last edit
+    pcode:       str                   # PSGC code, e.g. "PH072217000"
+    name:        str                   # City/municipality name
+    province:    str                   # Province name
+    region:      str                   # Region name
+    population:  int                   # Total population (2024 Census)
+    households:  int                   # Number of households
+    poverty_pct: float                 # Poverty incidence 0.0-1.0
+    is_coastal:  int                   # 0 = inland, 1 = coastal
+    flood_zone:  str                   # low / medium / high
+    eq_zone:     str                   # low / medium / high
+    risk_score:  float                 # Composite risk score 0.0-1.0
+    zone_type:   str                   # "coastal" or "inland"
+    demand:      CityDemand            # Peak single-day demand estimates
+    updated_by:  Optional[str] = None  # Email of last editor
+    updated_at:  Optional[str] = None  # ISO timestamp of last edit
 
 
 class CityUpdateResponse(CamelModel):
-    """Response after a city edit via PATCH /api/v1/cities/{pcode}."""
-    message:        str            # Success message
-    changes:        dict           # Fields that were changed
-    new_risk_score: float          # Recomputed risk score
-    updated_by:     str            # Email of the editor
-    updated_at:     str            # ISO timestamp
+    """
+    Response after a city edit via PATCH /api/v1/cities/{pcode}.
+    Returns complete city state so the frontend can refresh the form.
+    """
+    message:     str                   # Success message
+    pcode:       str                   # PSGC code
+    name:        str                   # City/municipality name
+    province:    str                   # Province name
+    region:      str                   # Region name
+    population:  int                   # Total population
+    households:  int                   # Number of households
+    poverty_pct: float                 # Poverty incidence 0.0-1.0
+    is_coastal:  int                   # 0 = inland, 1 = coastal
+    flood_zone:  str                   # low / medium / high
+    eq_zone:     str                   # low / medium / high
+    risk_score:  float                 # Composite risk score 0.0-1.0
+    zone_type:   str                   # "coastal" or "inland"
+    updated_by:  str                   # Email of the editor
+    updated_at:  str                   # ISO timestamp
 
 
 # ── Simulation Models ──────────────────────────────────────────────────────
