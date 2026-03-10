@@ -63,16 +63,39 @@ DEMAND_CURVE = {
     "volcanic":   [0.1, 0.3, 0.6, 0.8, 0.7, 0.5, 0.3],
 }
 
-SEVERITY_MULTIPLIER = {1: 0.5, 2: 1.0, 3: 1.6, 4: 2.5}
+# ── Displacement model constants ──────────────────────────────────────────
+# Base fraction of households displaced, indexed by severity (1-4).
+BASE_DISPLACEMENT = {1: 0.10, 2: 0.20, 3: 0.35, 4: 0.55}
+
+# Hazard-zone alignment: amplifies/dampens displacement based on how
+# exposed the area is to the specific hazard type being simulated.
+ZONE_MODIFIER = {"low": 0.7, "medium": 1.0, "high": 1.3}
+
+# ── Seasonal multipliers (Philippine climate) ─────────────────────────────
+# Applies to typhoon and flood only. Based on wet/dry season patterns.
+# Peak: Aug-Oct (monsoon + typhoon season). Low: Jan-Mar (dry season).
+SEASONAL_MULTIPLIER = {
+    1: 0.85, 2: 0.85, 3: 0.85,       # Dry season
+    4: 0.90, 5: 0.90,                 # Pre-monsoon transition
+    6: 1.05, 7: 1.05,                 # Southwest monsoon begins
+    8: 1.15, 9: 1.15, 10: 1.15,      # Peak typhoon + monsoon
+    11: 1.05,                          # Late typhoon season
+    12: 0.90,                          # Transition to dry
+}
+
+# National average household size (PSA, 2020 Census)
+NATIONAL_AVG_HH_SIZE = 4.1
 
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "prophet")
 
 
 # ── Price lookup ───────────────────────────────────────────────────────────
 
-def _get_unit_prices() -> dict[str, float]:
+@lru_cache(maxsize=4)
+def _get_unit_prices_cached(today: date) -> dict[str, float]:
     """
-    Load current unit prices from the database.
+    Load current unit prices from the database, cached daily.
+    The date param ensures the cache refreshes once per day.
     Returns a dict mapping item_key → price_per_unit (PHP).
     Falls back to hardcoded defaults if DB is unavailable.
     """
@@ -92,6 +115,11 @@ def _get_unit_prices() -> dict[str, float]:
         "meds_units": 500.0,
         "kits_units": 350.0,
     }
+
+
+def _get_unit_prices() -> dict[str, float]:
+    """Get cached unit prices (refreshes daily)."""
+    return _get_unit_prices_cached(date.today())
 
 
 # ── Prophet model loading (optional) ──────────────────────────────────────
@@ -121,9 +149,12 @@ def _prophet_forecast(model, hazard_type: str, severity: int, horizon: int = 7):
 # ── Core forecast computation ─────────────────────────────────────────────
 
 def _compute_forecast(
+    population: int,
     households: int,
     is_coastal: int,
     poverty_pct: float,
+    flood_zone: str,
+    eq_zone: str,
     hazard_type: str,
     severity: int,
     horizon: int,
@@ -132,12 +163,20 @@ def _compute_forecast(
     """
     Core forecast computation shared by forecast_city and forecast_custom_city.
 
-    Formula:
-      demand = displaced_hh × SPHERE_rate × curve_multiplier × severity
+    Displacement model:
+      displacement_rate = base_rate × zone_mod × coastal_mod × vulnerability
+                          × seasonal
+      displaced_hh      = households × displacement_rate  (capped at 85%)
+      demand             = displaced_hh × SPHERE_rate × curve_multiplier
+                          × hh_size_factor
 
-    Where:
-      - displaced_hh = households × displacement_rate
-      - displacement_rate depends on severity, coastal exposure, and poverty
+    Factors:
+      - base_rate:       severity-driven (10%–55% of households)
+      - zone_mod:        hazard-zone alignment (compound for typhoon)
+      - coastal_mod:     +20% for coastal areas during typhoons/floods
+      - vulnerability:   non-linear poverty curve (×1.0 to ×2.2)
+      - seasonal:        wet/dry season multiplier (typhoon/flood only)
+      - hh_size_factor:  scales demand by avg persons per household
     """
     # Get prices for cost estimation
     unit_prices = _get_unit_prices()
@@ -155,12 +194,52 @@ def _compute_forecast(
                 except Exception:
                     pass
 
-    # Get demand curve and severity multiplier
+    # Get demand curve
     curve = DEMAND_CURVE.get(hazard_type or "typhoon", DEMAND_CURVE["typhoon"])
-    sev_mult = SEVERITY_MULTIPLIER.get(severity or 1, 1.0)
 
-    # Estimate displaced households
-    displaced_hh = int(households * 0.35 * sev_mult)
+    # ── Compute displaced households using all city parameters ─────────
+    eff_severity = severity or 1
+    base_rate = BASE_DISPLACEMENT.get(eff_severity, 0.20)
+
+    # Hazard-zone alignment with compound interaction
+    eff_hazard = hazard_type or "typhoon"
+    if eff_hazard == "typhoon":
+        # Compound: typhoon uses flood_zone (primary) + eq_zone at 30%
+        # strength (structural vulnerability to wind loading)
+        flood_mod = ZONE_MODIFIER.get(flood_zone or "medium", 1.0)
+        eq_raw = ZONE_MODIFIER.get(eq_zone or "medium", 1.0)
+        struct_mod = 1.0 + (eq_raw - 1.0) * 0.3
+        zone_mod = flood_mod * struct_mod
+        coastal_mod = 1.2 if is_coastal else 1.0
+    elif eff_hazard == "flood":
+        zone_mod = ZONE_MODIFIER.get(flood_zone or "medium", 1.0)
+        coastal_mod = 1.2 if is_coastal else 1.0
+    elif eff_hazard == "earthquake":
+        zone_mod = ZONE_MODIFIER.get(eq_zone or "medium", 1.0)
+        coastal_mod = 1.0
+    else:  # volcanic or unknown
+        zone_mod = 1.0
+        coastal_mod = 1.0
+
+    # Non-linear poverty vulnerability: extreme poverty creates
+    # disproportionate vulnerability (weaker housing, no savings)
+    eff_poverty = poverty_pct or 0.20
+    vulnerability = 1.0 + (eff_poverty ** 0.7) * 1.2
+
+    # Seasonal adjustment (typhoon/flood only)
+    if eff_hazard in ("typhoon", "flood"):
+        seasonal = SEASONAL_MULTIPLIER.get(date.today().month, 1.0)
+    else:
+        seasonal = 1.0
+
+    displacement_rate = min(
+        base_rate * zone_mod * coastal_mod * vulnerability * seasonal, 0.85
+    )
+    displaced_hh = int(households * displacement_rate)
+
+    # Household size scaling: larger families need more supplies per HH
+    avg_hh_size = population / max(households, 1)
+    hh_size_factor = avg_hh_size / NATIONAL_AVG_HH_SIZE
 
     results = []
     today = date.today()
@@ -183,9 +262,9 @@ def _compute_forecast(
                 lower = max(0, round(float(row["yhat_lower"]), 1))
                 upper = max(0, round(float(row["yhat_upper"]), 1))
             else:
-                # ── SPHERE formula fallback ────────────────────────────
-                multiplier = curve[day_offset] * sev_mult
-                base_demand = displaced_hh * item_cfg["sphere_rate"]
+                # ── SPHERE formula fallback ────────────────────────────────
+                multiplier = curve[day_offset]
+                base_demand = displaced_hh * item_cfg["sphere_rate"] * hh_size_factor
                 val   = round(base_demand * multiplier, 1)
                 lower = round(val * 0.80, 1)
                 upper = round(val * 1.20, 1)
@@ -250,13 +329,40 @@ def forecast_city(
         raise ValueError(f"City {pcode} not found")
 
     return _compute_forecast(
+        population=city.population,
         households=city.households,
         is_coastal=city.is_coastal,
         poverty_pct=city.poverty_pct or 0.20,
+        flood_zone=city.flood_zone or "medium",
+        eq_zone=city.eq_zone or "medium",
         hazard_type=hazard_type,
         severity=severity,
         horizon=horizon,
         pcode=pcode,
+    )
+
+
+def forecast_city_obj(
+    city: City,
+    hazard_type: str = None,
+    severity: int = None,
+    horizon: int = 7,
+) -> list[ForecastPoint]:
+    """
+    Generate a 7-day forecast using an already-loaded City ORM object.
+    Avoids the redundant DB session that forecast_city() opens.
+    """
+    return _compute_forecast(
+        population=city.population,
+        households=city.households,
+        is_coastal=city.is_coastal,
+        poverty_pct=city.poverty_pct or 0.20,
+        flood_zone=city.flood_zone or "medium",
+        eq_zone=city.eq_zone or "medium",
+        hazard_type=hazard_type,
+        severity=severity,
+        horizon=horizon,
+        pcode=city.pcode,
     )
 
 
@@ -280,8 +386,8 @@ def forecast_custom_city(
         households: Number of households
         is_coastal: 0 or 1
         poverty_pct: 0.0–1.0
-        flood_zone: low | medium | high (not used in forecast, for context)
-        eq_zone: low | medium | high (not used in forecast, for context)
+        flood_zone: low | medium | high
+        eq_zone: low | medium | high
         hazard_type: typhoon | flood | earthquake | volcanic
         severity: 1–4
         horizon: Number of forecast days (default: 7)
@@ -290,9 +396,12 @@ def forecast_custom_city(
         List of 7 dicts with demand, confidence intervals, and costs.
     """
     return _compute_forecast(
+        population=population,
         households=households,
         is_coastal=is_coastal,
         poverty_pct=poverty_pct,
+        flood_zone=flood_zone,
+        eq_zone=eq_zone,
         hazard_type=hazard_type,
         severity=severity,
         horizon=horizon,

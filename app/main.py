@@ -3,6 +3,7 @@ PhiliReady API — Micro-Demand Forecaster for Relief Goods
 
 FastAPI application entry point. Configures:
   - CORS for frontend cross-origin requests
+  - Rate limiting on public endpoints (via slowapi)
   - API versioning under /api/v1/
   - All route registrations (including auth, admin, simulator, prices)
   - Health check endpoint
@@ -13,9 +14,14 @@ Run locally:
 Swagger docs available at:
     http://localhost:8000/docs
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from app.limiter import limiter
 from app.routers import map, forecast, simulate, cities, weather, auth, admin, simulator, prices
 from app.schemas.responses import HealthResponse
 
@@ -31,6 +37,10 @@ app = FastAPI(
     ),
     version="2.0.0",
 )
+
+# Attach limiter to app state (required by slowapi)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ── CORS Configuration ────────────────────────────────────────────────────
@@ -73,3 +83,4 @@ app.include_router(admin.router,     prefix=API_V1_PREFIX, tags=["Admin"])
 def health():
     """Health check for deployment monitoring."""
     return {"status": "ok", "service": "philiready-api", "version": "2.0.0"}
+

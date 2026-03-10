@@ -6,7 +6,8 @@ POST /api/v1/simulate
 Recomputes demand scores under a user-specified disaster scenario.
 Nothing is persisted — the frontend owns simulation state via URL params.
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from app.limiter import limiter
 from app.schemas.responses import SimulationRequest
 from app.services.demand_service import compute_demand_scores
 
@@ -14,7 +15,8 @@ router = APIRouter()
 
 
 @router.post("/simulate")
-def run_simulation(body: SimulationRequest):
+@limiter.limit("5/minute")
+def run_simulation(request: Request, body: SimulationRequest):
     """
     Recalculates demand scores under a simulated disaster scenario.
 
@@ -26,6 +28,8 @@ def run_simulation(body: SimulationRequest):
 
     This is a stateless endpoint — no data is written to the database.
     The frontend stores simulation state in URL search parameters.
+
+    Rate limited: 5 requests per minute.
     """
     scores = compute_demand_scores(body.hazard_type, body.severity)
     return scores

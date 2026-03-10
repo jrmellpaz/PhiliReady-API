@@ -8,13 +8,14 @@ Prices are in Philippine Pesos (PHP) and apply globally.
 They are used to calculate cost estimates in forecast responses.
 """
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import User, ItemPrice
 from app.deps import require_admin
 from app.schemas.responses import CamelModel
+from app.limiter import limiter
 
 router = APIRouter(prefix="/prices", tags=["Prices"])
 
@@ -38,7 +39,8 @@ class UpdatePriceRequest(CamelModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[PriceResponse])
-def list_prices(db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def list_prices(request: Request, db: Session = Depends(get_db)):
     """
     List all current relief goods unit prices.
     No authentication required — prices are public.

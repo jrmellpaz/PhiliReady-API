@@ -331,19 +331,67 @@ def prune_stale_cities(db, valid_pcodes: set[str]) -> int:
 def generate_distributions(city_row: dict, event_date_str: str,
                            hazard_type: str, severity: int) -> list:
     """Generate 7 days of synthetic distribution records for one city/event."""
+    population = city_row["population"]
     hh = city_row["households"]
     poverty = city_row["poverty_pct"]
     coastal = city_row["is_coastal"]
+    flood_zone = city_row.get("flood_zone", "medium")
+    eq_zone = city_row.get("eq_zone", "medium")
     pcode = city_row["pcode"]
 
     curve = HAZARD_CURVES.get(hazard_type, HAZARD_CURVES["typhoon"])[severity]
 
-    base_displacement = 0.15 + (severity * 0.10) + (coastal * 0.10)
-    vulnerability_modifier = 1.0 + (poverty * 1.2)
-    displaced_hh = int(hh * min(base_displacement * vulnerability_modifier, 0.85))
+    # Displacement model — aligned with forecast_service._compute_forecast()
+    BASE_DISPLACEMENT = {1: 0.10, 2: 0.20, 3: 0.35, 4: 0.55}
+    ZONE_MODIFIER = {"low": 0.7, "medium": 1.0, "high": 1.3}
+    SEASONAL_MULTIPLIER = {
+        1: 0.85, 2: 0.85, 3: 0.85,
+        4: 0.90, 5: 0.90,
+        6: 1.05, 7: 1.05,
+        8: 1.15, 9: 1.15, 10: 1.15,
+        11: 1.05, 12: 0.90,
+    }
+    NATIONAL_AVG_HH_SIZE = 4.1
+
+    base_rate = BASE_DISPLACEMENT.get(severity, 0.20)
+
+    # Compound hazard: typhoon = flood_zone + 30% eq_zone structural
+    if hazard_type == "typhoon":
+        flood_mod = ZONE_MODIFIER.get(flood_zone, 1.0)
+        eq_raw = ZONE_MODIFIER.get(eq_zone, 1.0)
+        struct_mod = 1.0 + (eq_raw - 1.0) * 0.3
+        zone_mod = flood_mod * struct_mod
+        coastal_mod = 1.2 if coastal else 1.0
+    elif hazard_type == "flood":
+        zone_mod = ZONE_MODIFIER.get(flood_zone, 1.0)
+        coastal_mod = 1.2 if coastal else 1.0
+    elif hazard_type == "earthquake":
+        zone_mod = ZONE_MODIFIER.get(eq_zone, 1.0)
+        coastal_mod = 1.0
+    else:
+        zone_mod = 1.0
+        coastal_mod = 1.0
+
+    # Non-linear poverty vulnerability
+    vulnerability = 1.0 + (poverty ** 0.7) * 1.2
+
+    # Seasonal adjustment using event date month
+    event_date = datetime.strptime(event_date_str, "%Y-%m-%d")
+    if hazard_type in ("typhoon", "flood"):
+        seasonal = SEASONAL_MULTIPLIER.get(event_date.month, 1.0)
+    else:
+        seasonal = 1.0
+
+    displacement_rate = min(
+        base_rate * zone_mod * coastal_mod * vulnerability * seasonal, 0.85
+    )
+    displaced_hh = int(hh * displacement_rate)
+
+    # Household size scaling
+    avg_hh_size = population / max(hh, 1)
+    hh_size_factor = avg_hh_size / NATIONAL_AVG_HH_SIZE
 
     records = []
-    event_date = datetime.strptime(event_date_str, "%Y-%m-%d")
 
     for day_offset, multiplier in enumerate(curve):
         if multiplier < 0.05:
@@ -357,10 +405,10 @@ def generate_distributions(city_row: dict, event_date_str: str,
             event_date=dist_date,
             hazard_type=hazard_type,
             severity=severity,
-            rice_kg=round(displaced_hh * SPHERE["rice_kg"] * multiplier * noise(), 1),
-            water_liters=round(displaced_hh * SPHERE["water_liters"] * multiplier * noise(), 1),
-            meds_units=round(displaced_hh * SPHERE["meds_units"] * multiplier * noise(), 1),
-            kits_units=round(displaced_hh * SPHERE["kits_units"] * multiplier * noise(), 1),
+            rice_kg=round(displaced_hh * SPHERE["rice_kg"] * hh_size_factor * multiplier * noise(), 1),
+            water_liters=round(displaced_hh * SPHERE["water_liters"] * hh_size_factor * multiplier * noise(), 1),
+            meds_units=round(displaced_hh * SPHERE["meds_units"] * hh_size_factor * multiplier * noise(), 1),
+            kits_units=round(displaced_hh * SPHERE["kits_units"] * hh_size_factor * multiplier * noise(), 1),
         ))
 
     return records

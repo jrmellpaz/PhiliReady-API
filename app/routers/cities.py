@@ -5,17 +5,18 @@ GET   /api/v1/cities/{pcode}  — City detail + peak demand (public)
 PATCH /api/v1/cities/{pcode}  — Edit city parameters (auth + city access required)
 """
 from datetime import datetime
-from fastapi import APIRouter, Path, Depends, HTTPException
+from fastapi import APIRouter, Path, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.db.database import get_db
 from app.db.models import City, User
 from app.deps import RequireCityAccess
-from app.services.forecast_service import forecast_city
+from app.services.forecast_service import forecast_city_obj
 from app.schemas.responses import (
     CamelModel, CityDetailResponse, CityDemand, CityUpdateResponse,
 )
+from app.limiter import limiter
 
 router = APIRouter()
 
@@ -56,7 +57,9 @@ def compute_risk_score(city: City) -> float:
 # ── Endpoints ──────────────────────────────────────────────────────────────
 
 @router.get("/cities/{pcode}", response_model=CityDetailResponse)
+@limiter.limit("30/minute")
 def get_city_detail(
+    request: Request,
     pcode: str = Path(..., description="City PSGC code, e.g. PH072217000"),
     db: Session = Depends(get_db),
 ):
@@ -69,7 +72,7 @@ def get_city_detail(
         raise HTTPException(status_code=404, detail=f"City with PSGC code '{pcode}' not found")
 
     # Compute baseline peak demand (no active hazard simulation)
-    forecast = forecast_city(pcode)
+    forecast = forecast_city_obj(city)
     peak = CityDemand(
         rice=max(d.rice for d in forecast),
         water=max(d.water for d in forecast),

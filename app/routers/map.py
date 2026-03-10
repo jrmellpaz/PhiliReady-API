@@ -6,14 +6,17 @@ GET /api/v1/map/demand-heat
 Returns normalized demand scores (0.0–1.0) for all cities.
 The frontend maps these scores to choropleth colors on the map.
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from app.limiter import limiter
 from app.services.demand_service import compute_demand_scores
 
 router = APIRouter()
 
 
 @router.get("/map/demand-heat")
+@limiter.limit("10/minute")
 def get_demand_heatmap(
+    request: Request,
     hazard_type: str = Query(
         None,
         description="Hazard type filter: typhoon | flood | earthquake | volcanic"
@@ -32,6 +35,8 @@ def get_demand_heatmap(
 
     Response shape:
       { "PH072217000": 0.92, "PH072218000": 0.71, ... }
+
+    Rate limited: 10 requests per minute.
     """
     scores = compute_demand_scores(hazard_type, severity)
     return scores

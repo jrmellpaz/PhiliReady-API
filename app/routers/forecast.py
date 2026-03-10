@@ -7,15 +7,18 @@ Returns daily demand predictions with confidence intervals for
 all four relief items (rice, water, medicine kits, hygiene kits).
 All response keys are camelCase.
 """
-from fastapi import APIRouter, Path, Query, HTTPException
+from fastapi import APIRouter, Path, Query, Request, HTTPException
 from fastapi.responses import JSONResponse
+from app.limiter import limiter
 from app.services.forecast_service import forecast_city
 
 router = APIRouter()
 
 
 @router.get("/forecast/{pcode}")
+@limiter.limit("20/minute")
 def get_forecast(
+    request: Request,
     pcode: str = Path(
         ...,
         description="City PSGC code, e.g. PH072217000"
@@ -36,6 +39,8 @@ def get_forecast(
     Each day includes predicted demand and +/-20% confidence intervals
     for rice (kg), water (L), medicine kits, and hygiene kits.
     All keys are camelCase (e.g. riceLower, totalCost).
+
+    Rate limited: 20 requests per minute.
     """
     try:
         forecast = forecast_city(pcode, hazard_type, severity)

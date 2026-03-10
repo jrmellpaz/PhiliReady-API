@@ -14,7 +14,7 @@ Scoring logic:
 """
 from app.db.database import SessionLocal
 from app.db.models import City
-from app.services.forecast_service import forecast_city
+from app.services.forecast_service import forecast_city_obj
 
 
 def compute_demand_scores(
@@ -41,12 +41,12 @@ def compute_demand_scores(
     for city in cities:
         if hazard_type and severity:
             # ── Simulation mode ────────────────────────────────────────
-            # Run forecast and use the peak rice demand as the raw score.
-            # Normalize by household count so large and small cities are
-            # comparable (per-household demand intensity).
+            # Use forecast_city_obj to avoid 1,621 individual DB sessions.
+            # Takes the peak rice demand and normalizes per household
+            # so large and small cities are comparable.
             try:
-                forecast = forecast_city(city.pcode, hazard_type, severity)
-                peak_rice = max(d["rice"] for d in forecast)
+                forecast = forecast_city_obj(city, hazard_type, severity)
+                peak_rice = max(d.rice for d in forecast)
                 raw_scores[city.pcode] = peak_rice / max(city.households, 1)
             except Exception:
                 # If forecast fails for a city, use stored risk_score
@@ -54,7 +54,7 @@ def compute_demand_scores(
         else:
             # ── Baseline mode ──────────────────────────────────────────
             # Use the pre-computed risk_score from the database.
-            # This avoids running forecasts for all ~330+ cities on every
+            # This avoids running forecasts for all ~1,621 cities on every
             # baseline map load.
             raw_scores[city.pcode] = city.risk_score
 

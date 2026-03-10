@@ -11,15 +11,18 @@ the URL (persists across refreshes without database writes).
 Both authenticated and unauthenticated users can use this endpoint.
 All response keys are camelCase.
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
+from app.limiter import limiter
 from app.services.forecast_service import forecast_custom_city
 
 router = APIRouter(prefix="/simulator", tags=["Simulator"])
 
 
 @router.get("/forecast")
+@limiter.limit("20/minute")
 def simulate_custom_city(
+    request: Request,
     population: int = Query(
         ..., ge=1,
         description="Total population of the hypothetical city"
@@ -61,6 +64,8 @@ def simulate_custom_city(
 
     No authentication required. Nothing is saved to the database.
     All response keys are camelCase.
+
+    Rate limited: 20 requests per minute.
     """
     # Estimate households if not provided
     if households is None:

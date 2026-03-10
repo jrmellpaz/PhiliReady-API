@@ -1,5 +1,5 @@
 """
-ORM models for the BariReady database.
+ORM models for the PhiliReady database.
 
 Tables:
   - cities: City/municipality reference data (population, risk, geography)
@@ -10,7 +10,8 @@ Tables:
 """
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Float, Integer, DateTime, ForeignKey, UniqueConstraint
+    Column, String, Float, Integer, DateTime, ForeignKey, Index,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -70,6 +71,12 @@ class ReliefDistribution(Base):
     kits_units   = Column(Float, nullable=False)       # hygiene kits distributed
 
     city = relationship("City", back_populates="distributions")
+
+    __table_args__ = (
+        Index("ix_distributions_city", "city_pcode"),
+        Index("ix_distributions_date", "event_date"),
+        Index("ix_distributions_hazard", "hazard_type", "severity"),
+    )
 
 
 # ── Users ──────────────────────────────────────────────────────────────────
