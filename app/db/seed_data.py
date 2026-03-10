@@ -381,6 +381,7 @@ def load_cities_from_csv() -> list[dict]:
 
     reference_mapping = load_municity_reference()
     matched_counts: dict[str, int] = {}
+    seen_pcodes: set[str] = set()
     cities = []
     skipped = []
     with open(csv_path, "r", encoding="utf-8") as f:
@@ -390,6 +391,13 @@ def load_cities_from_csv() -> list[dict]:
             if city_record is None:
                 skipped.append(row["name"].strip())
                 continue
+            # Guard against duplicate pcodes caused by common municipality
+            # names (e.g. Concepcion, Magsaysay, Rizal) matching to the
+            # wrong canonical GeoJSON entry.
+            if city_record["pcode"] in seen_pcodes:
+                skipped.append(row["name"].strip())
+                continue
+            seen_pcodes.add(city_record["pcode"])
             cities.append(city_record)
 
     if skipped:
@@ -406,7 +414,7 @@ def run():
     db = SessionLocal()
 
     # ── Step 1: Create default admin user ──────────────────────────────────
-    admin_email = os.getenv("ADMIN_EMAIL", "admin@bariready.ph")
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@philiready.ph")
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
 
     existing_admin = db.query(User).filter(User.email == admin_email).first()
