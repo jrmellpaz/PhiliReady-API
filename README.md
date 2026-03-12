@@ -49,7 +49,7 @@ philiready_api/
 │   ├── deps.py              # Auth dependencies (JWT, role checks, city access)
 │   ├── db/
 │   │   ├── database.py      # SQLAlchemy engine + session factory
-│   │   ├── models.py        # ORM models (City, User, ReliefDistribution, ItemPrice)
+│   │   ├── models.py        # ORM models (City, User, ReliefDistribution, ItemPrice, AiAssessmentCache)
 │   │   └── seed_data.py     # Database seeder (cities, admin user, prices, distributions)
 │   ├── routers/
 │   │   ├── map.py           # GET /map/demand-heat — heatmap data
@@ -60,17 +60,20 @@ philiready_api/
 │   │   ├── weather.py       # GET /weather/{pcode} — weather data
 │   │   ├── prices.py        # GET/PATCH item prices
 │   │   ├── auth.py          # POST /auth/token, GET /auth/me
-│   │   └── admin.py         # Admin-only user management
+│   │   ├── admin.py         # Admin-only user management
+│   │   ├── chat.py          # POST /chat — PhiliReady Assistant
+│   │   └── explain.py       # POST /explain — AI-generated disaster-preparedness assessment
 │   ├── schemas/
 │   │   └── responses.py     # Pydantic response models (camelCase)
 │   └── services/
 │       ├── forecast_service.py  # SPHERE formula + optional Prophet models
 │       ├── demand_service.py    # Demand computation helpers
 │       ├── weather_service.py   # Open-Meteo API client
-│       └── auth_service.py      # JWT token creation/validation, password hashing
+│       ├── auth_service.py      # JWT token creation/validation, password hashing
+│       └── ai_cache.py          # DB helpers for AI assessment cache entries
 ├── data/
 │   ├── psgc_cities.csv          # All PH cities/municipalities (PSGC codes)
-│   ├── PH_Adm3_MuniCities.csv  # Administrative boundary data
+│   ├── PH_Adm3_MuniCities.csv   # Administrative boundary data
 │   ├── generate_cities.py       # Script to generate city CSV from raw data
 │   └── parse_2024_census.py     # PSA 2024 Census data parser
 ├── tests/
@@ -142,6 +145,8 @@ OPEN_METEO_ARCHIVE_URL=https://archive-api.open-meteo.com/v1
 # Default admin account
 ADMIN_EMAIL=admin@philiready.ph
 ADMIN_PASSWORD=change-me-in-production
+
+
 ```
 
 ### 5. Create the Database

@@ -11,7 +11,7 @@ Tables:
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Float, Integer, DateTime, ForeignKey, Index,
-    UniqueConstraint,
+    UniqueConstraint, Text
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -49,6 +49,8 @@ class City(Base):
 
     distributions = relationship("ReliefDistribution", back_populates="city")
     user_access   = relationship("UserCityAccess", back_populates="city")
+    ai_assessments = relationship("AiAssessmentCache", back_populates="city",
+                               cascade="all, delete-orphan")
 
 
 # ── Relief Distributions ──────────────────────────────────────────────────
@@ -137,3 +139,32 @@ class ItemPrice(Base):
     unit           = Column(String, nullable=False)                # e.g. "kg"
     price_per_unit = Column(Float, nullable=False)                 # PHP per unit
     updated_at     = Column(DateTime, default=datetime.utcnow)
+
+# ── AI Assessment Cache ───────────────────────────────────────────────────
+ 
+class AiAssessmentCache(Base):
+    """
+    Cached AI-generated assessment text per city + scenario.
+ 
+    Cache key: (pcode, hazard, severity)
+      - hazard = '' and severity = 0 → baseline (no active simulation)
+      - hazard = 'typhoon' and severity = 2 → simulation scenario
+ 
+    Invalidated automatically when the city's parameters are edited
+    via PATCH /api/v1/cities/{pcode}.
+    """
+    __tablename__ = "ai_assessment_cache"
+ 
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    pcode        = Column(String, ForeignKey("cities.pcode"), nullable=False)
+    hazard       = Column(String, nullable=False, default='')   # '' = baseline
+    severity     = Column(Integer, nullable=False, default=0)   # 0 = baseline
+    text         = Column(Text, nullable=False)
+    generated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+ 
+    city = relationship("City", back_populates="ai_assessments")
+ 
+    __table_args__ = (
+        UniqueConstraint("pcode", "hazard", "severity", name="uq_ai_assessment"),
+        Index("ix_ai_assessment_pcode", "pcode"),
+    )

@@ -22,7 +22,11 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.limiter import limiter
-from app.routers import map, forecast, simulate, cities, weather, auth, admin, simulator, prices
+from app.routers import (
+    map, forecast, simulate, cities, weather,
+    auth, admin, simulator, prices,
+    chat, explain,                         
+)
 from app.schemas.responses import HealthResponse
 
 
@@ -55,6 +59,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Generated-At"],     # ← expose custom header to frontend
 )
 
 
@@ -71,6 +76,8 @@ app.include_router(cities.router,    prefix=API_V1_PREFIX, tags=["Cities"])
 app.include_router(weather.router,   prefix=API_V1_PREFIX, tags=["Weather"])
 app.include_router(simulator.router, prefix=API_V1_PREFIX, tags=["Simulator"])
 app.include_router(prices.router,    prefix=API_V1_PREFIX, tags=["Prices"])
+app.include_router(explain.router,   prefix=API_V1_PREFIX, tags=["Explain"])   # ← new
+app.include_router(chat.router,      prefix=API_V1_PREFIX, tags=["Chat"])      # ← new
 
 # Authenticated endpoints
 app.include_router(auth.router,      prefix=API_V1_PREFIX, tags=["Authentication"])

@@ -17,6 +17,7 @@ from app.schemas.responses import (
     CamelModel, CityDetailResponse, CityDemand, CityUpdateResponse,
 )
 from app.limiter import limiter
+from app.services.ai_cache import invalidate_by_pcode
 
 router = APIRouter()
 
@@ -174,6 +175,8 @@ def update_city(
 
     db.commit()
     db.refresh(city)
+
+    invalidate_by_pcode(db, pcode)
 
     return CityUpdateResponse(
         message=f"Updated city '{city.name}' ({pcode})",
