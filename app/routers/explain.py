@@ -1,6 +1,6 @@
 """
 app/routers/explain.py
-POST /explain  — streams an AI-generated disaster-preparedness assessment.
+POST /explain  — streams an AI-generated assessment.
 
 Cache behaviour:
   - Cache HIT  → streams the stored text as a single chunk (instant).

@@ -146,6 +146,8 @@ OPEN_METEO_ARCHIVE_URL=https://archive-api.open-meteo.com/v1
 ADMIN_EMAIL=admin@philiready.ph
 ADMIN_PASSWORD=change-me-in-production
 
+LLM_API_KEY=your-llm-api-key-here
+
 
 ```
 
@@ -201,6 +203,8 @@ All endpoints are prefixed with `/api/v1/`.
 | GET    | `/auth/me`                  | Bearer   | Current user profile                     |
 | GET    | `/admin/users`              | Admin    | List all users                           |
 | POST   | `/admin/users`              | Admin    | Create a new user                        |
+| POST   | `/chat`                     | —        | PhiliReady Assistant                     |
+| POST   | `/explain`                  | —        | AI-generated assessment                  |
 
 > **Note:** All API responses use **camelCase** keys (e.g., `riskScore`, `povertyPct`).
 
