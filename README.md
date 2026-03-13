@@ -1,4 +1,4 @@
-# 🇵🇭 PhiliReady API
+# PhiliReady API
 
 **Micro-Demand Forecaster for Relief Goods** — Predicts 7-day relief supply demand for all Philippine cities and municipalities. Built for DRRMO officers and LGU coordinators.
 
@@ -22,6 +22,57 @@ PhiliReady is a backend API that helps Philippine disaster response teams estima
 - **What-If Simulator** — Forecast demand for hypothetical cities with custom parameters (no login required)
 - **Role-Based Access Control** — JWT authentication with admin and LGU user roles
 - **City-Level Permissions** — LGU users can only edit cities assigned to them; admins have full access
+- **AI-Powered Features** — Chat assistant and AI-generated disaster preparedness assessments
+
+---
+
+## 🧮 Forecasting Methodology
+
+### Core Formula
+
+The demand forecasting engine combines **SPHERE humanitarian standards** with location-specific risk factors:
+
+```
+Displacement Rate = Base Rate × Zone Modifier × Coastal Modifier × Vulnerability × Seasonal Multiplier
+```
+```
+Displaced Households = Total Households × Displacement Rate (capped at 85%)
+```
+```
+Demand = Displaced Households × SPHERE Rate × Household Size Factor × Daily Curve Multiplier
+```
+
+### Relief Items & SPHERE Rates
+
+| Item | Unit | SPHERE Rate | Description |
+|------|------|-------------|-------------|
+| Rice | kg | 1.5 kg/household/day | Staple food allocation |
+| Water | liters | 15 L/household/day | Drinking and hygiene water |
+| Medicine Kits | units | 0.08 units/household/day | ~1 kit per 12 families |
+| Hygiene Kits | units | 0.07 units/household/day | ~1 kit per 14 families |
+
+### Hazard-Specific Demand Curves
+
+Daily demand multipliers over 7 days (normalized to peak = 1.0):
+
+| Day | Typhoon | Flood | Earthquake | Volcanic |
+|-----|---------|-------|------------|----------|
+| 1   | 0.2     | 0.3   | 1.2        | 0.1      |
+| 2   | 1.0     | 0.8   | 0.9        | 0.3      |
+| 3   | 1.6     | 1.0   | 0.6        | 0.6      |
+| 4   | 1.4     | 0.8   | 0.3        | 0.8      |
+| 5   | 1.0     | 0.5   | 0.2        | 0.7      |
+| 6   | 0.7     | 0.3   | 0.1        | 0.5      |
+| 7   | 0.4     | 0.1   | 0.1        | 0.3      |
+
+### Displacement Model Constants
+
+- **Base Displacement Rates**: Severity 1-4 (10%-55% of households displaced)
+- **Zone Modifiers**: Low (0.7×), Medium (1.0×), High (1.3×)
+- **Coastal Amplification**: +20% for coastal areas during typhoons/floods
+- **Vulnerability Factor**: Non-linear poverty scaling (1.0× to 2.2×)
+- **Seasonal Multipliers**: Philippine wet/dry season adjustments (0.85× to 1.15×)
+- **Household Size**: National average 4.1 persons/household (PSA 2020 Census)
 
 ---
 
@@ -36,7 +87,8 @@ PhiliReady is a backend API that helps Philippine disaster response teams estima
 | Weather Data    | Open-Meteo API (free, no key required)         |
 | Data Processing | Pandas + NumPy                                |
 | HTTP Client     | httpx                                         |
-| Deployment      | Heroku (Procfile + runtime.txt)                |
+| Rate Limiting   | slowapi                                       |
+| AI Integration  | Groq API                                      |
 
 ---
 
@@ -47,9 +99,10 @@ philiready_api/
 ├── app/
 │   ├── main.py              # FastAPI entry point, CORS, router registration
 │   ├── deps.py              # Auth dependencies (JWT, role checks, city access)
+│   ├── limiter.py           # Rate limiting configuration
 │   ├── db/
 │   │   ├── database.py      # SQLAlchemy engine + session factory
-│   │   ├── models.py        # ORM models (City, User, ReliefDistribution, ItemPrice)
+│   │   ├── models.py        # ORM models (City, User, ReliefDistribution, ItemPrice, AiAssessmentCache)
 │   │   └── seed_data.py     # Database seeder (cities, admin user, prices, distributions)
 │   ├── routers/
 │   │   ├── map.py           # GET /map/demand-heat — heatmap data
@@ -60,28 +113,48 @@ philiready_api/
 │   │   ├── weather.py       # GET /weather/{pcode} — weather data
 │   │   ├── prices.py        # GET/PATCH item prices
 │   │   ├── auth.py          # POST /auth/token, GET /auth/me
-│   │   └── admin.py         # Admin-only user management
+│   │   ├── admin.py         # Admin-only user management
+│   │   ├── chat.py          # POST /chat — PhiliReady Assistant
+│   │   └── explain.py       # POST /explain — AI-generated disaster-preparedness assessment
 │   ├── schemas/
 │   │   └── responses.py     # Pydantic response models (camelCase)
 │   └── services/
-│       ├── forecast_service.py  # SPHERE formula + optional Prophet models
+│       ├── forecast_service.py  # SPHERE formula computation
 │       ├── demand_service.py    # Demand computation helpers
 │       ├── weather_service.py   # Open-Meteo API client
-│       └── auth_service.py      # JWT token creation/validation, password hashing
+│       ├── auth_service.py      # JWT token creation/validation, password hashing
+│       └── ai_cache.py          # DB helpers for AI assessment cache entries
 ├── data/
 │   ├── psgc_cities.csv          # All PH cities/municipalities (PSGC codes)
-│   ├── PH_Adm3_MuniCities.csv  # Administrative boundary data
+│   ├── PH_Adm3_MuniCities.csv   # Administrative boundary data
 │   ├── generate_cities.py       # Script to generate city CSV from raw data
 │   └── parse_2024_census.py     # PSA 2024 Census data parser
 ├── tests/
 │   └── test_api.py          # API endpoint tests
 ├── references/              # Project documentation and plans
 ├── requirements.txt         # Python dependencies
-├── Procfile                 # Heroku deployment config
-├── runtime.txt              # Python version (3.11.9)
-├── .env.example             # Environment variable template
-└── .gitignore
+└── README.md
 ```
+
+---
+
+## 📊 Data Sources
+
+### Primary Data Sources
+
+- **Philippine Statistics Authority (PSA)**: 2024 Census population data
+- **Philippine Statistics Geographic Code (PSGC)**: Administrative boundaries and codes
+- **Open-Meteo API**: Real-time and historical weather data
+- **SPHERE Standards**: Humanitarian relief guidelines (spherehandbook.org)
+
+### Database Tables
+
+- **cities**: 1,600+ municipalities with demographics, risk scores, and hazard zones
+- **relief_distributions**: Synthetic historical distribution data for forecasting validation
+- **users**: Authenticated users with role-based permissions
+- **user_city_access**: LGU user ↔ city assignment mapping
+- **item_prices**: Configurable unit prices for cost estimation
+- **ai_assessment_cache**: Cached AI-generated assessments per scenario
 
 ---
 
@@ -142,6 +215,8 @@ OPEN_METEO_ARCHIVE_URL=https://archive-api.open-meteo.com/v1
 # Default admin account
 ADMIN_EMAIL=admin@philiready.ph
 ADMIN_PASSWORD=change-me-in-production
+
+LLM_API_KEY=your-llm-api-key-here
 ```
 
 ### 5. Create the Database
@@ -178,126 +253,77 @@ FastAPI auto-generates interactive docs:
 
 ### API Endpoints (v1)
 
-All endpoints are prefixed with `/api/v1/`.
+All endpoints are prefixed with `/api/v1/`. All responses use **camelCase** keys.
+
+#### Public Endpoints
+
+| Method | Endpoint                    | Description                              |
+| ------ | --------------------------- | ---------------------------------------- |
+| GET    | `/map/demand-heat`          | Demand heatmap data for all cities       |
+| GET    | `/forecast/{pcode}`         | 7-day demand forecast for a city         |
+| POST   | `/simulate`                 | Quick forecast with custom parameters    |
+| POST   | `/simulator`                | Detailed what-if scenario simulation     |
+| GET    | `/cities`                   | List all cities (paginated, filterable)  |
+| GET    | `/cities/{pcode}`           | Single city details                      |
+| GET    | `/weather/{pcode}`          | Weather data for a city                  |
+| GET    | `/prices`                   | Current relief item prices (PHP)         |
+| POST   | `/chat`                     | PhiliReady Assistant                     |
+| POST   | `/explain`                  | AI-generated assessment                  |
+
+#### Authenticated Endpoints
 
 | Method | Endpoint                    | Auth     | Description                              |
 | ------ | --------------------------- | -------- | ---------------------------------------- |
-| GET    | `/map/demand-heat`          | —        | Demand heatmap data for all cities       |
-| GET    | `/forecast/{pcode}`         | —        | 7-day demand forecast for a city         |
-| POST   | `/simulate`                 | —        | Quick forecast with custom parameters    |
-| POST   | `/simulator`                | —        | Detailed what-if scenario simulation     |
-| GET    | `/cities`                   | —        | List all cities (paginated, filterable)  |
-| GET    | `/cities/{pcode}`           | —        | Single city details                      |
-| PATCH  | `/cities/{pcode}`           | LGU+     | Update city data (role-restricted)       |
-| GET    | `/weather/{pcode}`          | —        | Weather data for a city                  |
-| GET    | `/prices`                   | —        | Current relief item prices (PHP)         |
-| PATCH  | `/prices/{item_key}`        | Admin    | Update an item price                     |
 | POST   | `/auth/token`               | —        | Login (returns JWT)                      |
 | GET    | `/auth/me`                  | Bearer   | Current user profile                     |
+| PATCH  | `/cities/{pcode}`           | LGU+     | Update city data (role-restricted)       |
+| PATCH  | `/prices/{item_key}`        | Admin    | Update an item price                     |
 | GET    | `/admin/users`              | Admin    | List all users                           |
 | POST   | `/admin/users`              | Admin    | Create a new user                        |
+| PATCH  | `/admin/users/{id}/cities`  | Admin    | Assign cities to LGU user                |
 
-> **Note:** All API responses use **camelCase** keys (e.g., `riskScore`, `povertyPct`).
+### Authentication
+
+- **JWT Bearer tokens** with 24-hour expiry
+- **Role-based access**: `admin` (full access) or `lgu` (city-restricted)
+- **City permissions**: LGU users can only edit assigned cities
+
+### Rate Limiting
+
+- Public endpoints: 100 requests/hour per IP
+- Authenticated endpoints: 1000 requests/hour per user
 
 ---
 
 ## 🧪 Running Tests
 
 ```bash
-# Run all tests
-pytest
+# Install test dependencies (if separate)
+pip install pytest
 
-# Run with verbose output
-pytest -v
+# Run the test suite
+pytest tests/
 
-# Run a specific test
-pytest tests/test_api.py::test_health_check_camel_case
+# Run with coverage
+pytest --cov=app tests/
 ```
 
-> **Note:** Tests require a seeded PostgreSQL database (run `python -m app.db.seed_data` first).
+Tests verify:
+- API response formats (camelCase)
+- Authentication flows
+- Data integrity
+- PSGC code validation
 
 ---
 
-## 🌐 Deployment (Heroku)
 
-The project includes Heroku deployment files:
+## 🙏 Acknowledgments
 
-- **`Procfile`** — Runs uvicorn on Heroku's `$PORT`
-- **`runtime.txt`** — Specifies Python 3.11.9
-
-```bash
-# Deploy to Heroku
-heroku create philiready-api
-heroku addons:create heroku-postgresql:essential-0
-heroku config:set JWT_SECRET_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
-git push heroku main
-
-# Seed the production database
-heroku run python -m app.db.seed_data
-```
+- **SPHERE Project** for humanitarian standards
+- **Philippine Statistics Authority** for census data
+- **Open-Meteo** for weather API
+- **FastAPI community** for excellent documentation
 
 ---
 
-## 🔐 Authentication
-
-PhiliReady uses **JWT Bearer tokens** for authenticated endpoints.
-
-### Login
-
-```bash
-curl -X POST http://localhost:8000/api/v1/auth/token \
-  -d "username=admin@philiready.ph&password=admin123"
-```
-
-### Use the Token
-
-```bash
-curl http://localhost:8000/api/v1/auth/me \
-  -H "Authorization: Bearer <your-token>"
-```
-
-### User Roles
-
-| Role    | Permissions                                         |
-| ------- | --------------------------------------------------- |
-| `admin` | Full access — manage users, edit any city, set prices |
-| `lgu`   | Edit only assigned cities                           |
-
----
-
-## 📊 Forecasting Model
-
-The demand forecasting engine uses a **two-tier approach**:
-
-1. **SPHERE Formula** (default) — Calculates demand based on:
-   - Displaced households (population × displacement rate × severity)
-   - Per-item SPHERE standard rates (e.g., 1.5 kg rice/household/day)
-   - Hazard-specific demand curves (typhoon, flood, earthquake, volcanic)
-   - Severity multiplier (1–4 scale)
-
-2. **Prophet Models** (optional) — If pre-trained `.pkl` model files exist in `app/models/prophet/`, the system uses Facebook Prophet for more accurate, data-driven predictions.
-
-### Relief Items Tracked
-
-| Item          | SPHERE Rate      | Default Price (PHP) |
-| ------------- | ---------------- | ------------------- |
-| Rice          | 1.5 kg/hh/day    | ₱50/kg              |
-| Water         | 15.0 L/hh/day    | ₱15/L               |
-| Medicine Kits | 0.08 units/hh/day | ₱500/unit            |
-| Hygiene Kits  | 0.07 units/hh/day | ₱350/unit            |
-
----
-
-## 📝 License
-
-This project is for academic and humanitarian purposes.
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -m 'Add your feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
+*Built with ❤️ for Philippine disaster response teams*
