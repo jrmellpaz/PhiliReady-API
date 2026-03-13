@@ -218,6 +218,7 @@ ADMIN_PASSWORD=change-me-in-production
 
 LLM_API_KEY=your-llm-api-key-here
 ```
+Get your LLM API key here: https://console.groq.com/keys
 
 ### 5. Create the Database
 
